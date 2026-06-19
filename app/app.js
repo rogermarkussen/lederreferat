@@ -37,6 +37,8 @@ const state = {
   directoryHandle: null,
   filter: "all",
   query: "",
+  dateFrom: "",
+  dateTo: "",
   busy: false,
 };
 
@@ -46,6 +48,8 @@ const els = {
   folderMeta: document.querySelector("#folder-meta"),
   search: document.querySelector("#search"),
   clear: document.querySelector("#clear-search"),
+  dateFrom: document.querySelector("#date-from"),
+  dateTo: document.querySelector("#date-to"),
   filters: [...document.querySelectorAll(".filter")],
   results: document.querySelector("#results"),
   resultTitle: document.querySelector("#result-title"),
@@ -155,6 +159,17 @@ function setStatus(text, busy = false) {
 
 function setFolderMeta(text) {
   els.folderMeta.textContent = text;
+}
+
+function scrollToTopResult() {
+  requestAnimationFrame(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  });
+}
+
+function renderAfterUserChange() {
+  render();
+  scrollToTopResult();
 }
 
 function readLocalStorageJson(key) {
@@ -654,6 +669,13 @@ function prepareIndex(rawIndex) {
 function activateIndex(index) {
   state.index = prepareIndex(index);
   const counts = state.index.counts;
+  const dates = state.index.documents.map((doc) => doc.meeting_date).filter(Boolean).sort();
+  const earliest = dates.at(0) || "";
+  const latest = dates.at(-1) || "";
+  els.dateFrom.min = earliest;
+  els.dateFrom.max = latest;
+  els.dateTo.min = earliest;
+  els.dateTo.max = latest;
   els.datasetMeta.textContent = `${counts.documents} referater, ${counts.cases} saker, ${counts.action_points} aksjonspunkter`;
   const generated = index.generated_at ? `Indeks ferdig ${new Date(index.generated_at).toLocaleString("no-NO")}` : "Indeks klar";
   setStatus(generated);
@@ -805,6 +827,9 @@ function scoreCase(caseItem, query) {
 }
 
 function passesFilter(caseItem) {
+  const meetingDate = caseItem.meeting_date || "";
+  if (state.dateFrom && (!meetingDate || meetingDate < state.dateFrom)) return false;
+  if (state.dateTo && (!meetingDate || meetingDate > state.dateTo)) return false;
   if (state.filter === "actions") return caseItem.action_points.length > 0;
   if (state.filter === "decisions") return Boolean(caseItem.decision_text);
   if (state.filter === "recent") {
@@ -1030,14 +1055,24 @@ els.reindexFolder.addEventListener("click", async () => {
 
 els.search.addEventListener("input", (event) => {
   state.query = event.target.value;
-  render();
+  renderAfterUserChange();
 });
 
 els.clear.addEventListener("click", () => {
   els.search.value = "";
   state.query = "";
   els.search.focus();
-  render();
+  renderAfterUserChange();
+});
+
+els.dateFrom.addEventListener("input", (event) => {
+  state.dateFrom = event.target.value;
+  renderAfterUserChange();
+});
+
+els.dateTo.addEventListener("input", (event) => {
+  state.dateTo = event.target.value;
+  renderAfterUserChange();
 });
 
 els.results.addEventListener("click", (event) => {
@@ -1050,7 +1085,7 @@ for (const filter of els.filters) {
   filter.addEventListener("click", () => {
     state.filter = filter.dataset.filter;
     els.filters.forEach((item) => item.classList.toggle("active", item === filter));
-    render();
+    renderAfterUserChange();
   });
 }
 
