@@ -199,10 +199,11 @@ async function storeDirectoryHandle(handle) {
   });
 }
 
-async function ensureDirectoryPermission(handle) {
+async function ensureDirectoryPermission(handle, { request = true } = {}) {
   if (!handle) return false;
   const options = { mode: "read" };
   if ((await handle.queryPermission(options)) === "granted") return true;
+  if (!request) return false;
   return (await handle.requestPermission(options)) === "granted";
 }
 
@@ -716,7 +717,7 @@ function signaturesDiffer(indexSignatures, currentSignatures) {
 
 async function refreshIndexIfFolderChanged() {
   if (!state.directoryHandle || !state.index) return;
-  if (!(await ensureDirectoryPermission(state.directoryHandle))) {
+  if (!(await ensureDirectoryPermission(state.directoryHandle, { request: false }))) {
     els.datasetMeta.textContent += " Må ha ny mappetilgang for å sjekke endringer.";
     setStatus("Cache lastet");
     return;
@@ -993,8 +994,11 @@ async function initialize() {
   if (!hadCache) {
     if (state.directoryHandle) {
       try {
-        await indexDirectory(state.directoryHandle);
-        return;
+        if (await ensureDirectoryPermission(state.directoryHandle, { request: false })) {
+          await indexDirectory(state.directoryHandle);
+          return;
+        }
+        els.datasetMeta.textContent = "Indeksen må bygges på nytt. Trykk Indekser på nytt.";
       } catch (error) {
         els.datasetMeta.textContent = `Indeksen må bygges på nytt. ${error.message}`;
       }
