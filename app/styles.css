@@ -213,6 +213,7 @@ h2 {
 .date-range {
   display: flex;
   flex-wrap: wrap;
+  align-items: end;
   gap: 10px;
   margin-top: 12px;
 }
@@ -238,6 +239,23 @@ h2 {
 .date-range input:focus {
   border-color: var(--focus);
   outline: 3px solid rgba(47, 125, 209, 0.18);
+}
+
+#clear-dates {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 650;
+  padding: 0 12px;
+}
+
+#clear-dates:hover {
+  border-color: #aeb9c1;
+  background: #e8edf0;
 }
 
 .filters {

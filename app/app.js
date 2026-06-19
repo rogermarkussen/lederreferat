@@ -50,6 +50,7 @@ const els = {
   clear: document.querySelector("#clear-search"),
   dateFrom: document.querySelector("#date-from"),
   dateTo: document.querySelector("#date-to"),
+  clearDates: document.querySelector("#clear-dates"),
   filters: [...document.querySelectorAll(".filter")],
   results: document.querySelector("#results"),
   resultTitle: document.querySelector("#result-title"),
@@ -1072,6 +1073,15 @@ els.dateFrom.addEventListener("input", (event) => {
 
 els.dateTo.addEventListener("input", (event) => {
   state.dateTo = event.target.value;
+  renderAfterUserChange();
+});
+
+els.clearDates.addEventListener("click", () => {
+  els.dateFrom.value = "";
+  els.dateTo.value = "";
+  state.dateFrom = "";
+  state.dateTo = "";
+  els.dateFrom.focus();
   renderAfterUserChange();
 });
 
