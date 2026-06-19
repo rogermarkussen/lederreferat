@@ -64,6 +64,7 @@ const els = {
   filters: [...document.querySelectorAll(".filter")],
   taskFilters: [...document.querySelectorAll(".task-filter")],
   taskOwnerFilter: document.querySelector("#task-owner-filter"),
+  taskOwnerSummary: document.querySelector("#task-owner-summary"),
   results: document.querySelector("#results"),
   resultTitle: document.querySelector("#result-title"),
   resultCount: document.querySelector("#result-count"),
@@ -1046,6 +1047,15 @@ function renderOwnerFilter() {
   const validKeys = new Set(owners.map((owner) => owner.key));
   state.taskOwners = new Set([...state.taskOwners].filter((key) => validKeys.has(key)));
   const allSelected = state.taskOwners.size === 0;
+  const selectedOwners = owners.filter((owner) => state.taskOwners.has(owner.key));
+  if (els.taskOwnerSummary) {
+    els.taskOwnerSummary.textContent =
+      selectedOwners.length === 0
+        ? "Alle ansvarlige"
+        : selectedOwners.length === 1
+          ? selectedOwners[0].label
+          : `${selectedOwners.length} ansvarlige`;
+  }
   els.taskOwnerFilter.innerHTML = [
     `<label class="owner-option owner-option-all">
       <input type="checkbox" data-owner-all ${allSelected ? "checked" : ""} />

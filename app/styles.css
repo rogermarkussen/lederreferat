@@ -48,7 +48,6 @@ textarea {
   border-radius: 8px;
   box-shadow: var(--shadow);
   padding: 20px;
-  overflow: hidden;
 }
 
 .topline,
@@ -333,30 +332,77 @@ h2 {
   background: #e8edf0;
 }
 
-.owner-filter {
-  display: grid;
-  gap: 4px;
-  width: min(520px, 100%);
-  margin-top: 12px;
-  padding: 0;
-  border: 0;
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 650;
+#task-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
 }
 
-.owner-filter legend {
-  padding: 0;
+#task-controls[hidden] {
+  display: none;
+}
+
+#task-controls .filters {
+  margin-top: 0;
+}
+
+.owner-filter {
+  position: relative;
+  flex: 0 1 260px;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 720;
+}
+
+.owner-filter summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  cursor: pointer;
+  list-style: none;
+  padding: 0 12px;
+}
+
+.owner-filter summary::-webkit-details-marker {
+  display: none;
+}
+
+.owner-filter summary::after {
+  width: 0;
+  height: 0;
+  border-top: 5px solid var(--muted);
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+  content: "";
+}
+
+.owner-filter[open] summary {
+  border-color: var(--brand);
+  background: #e6f1ef;
+  color: var(--brand-dark);
 }
 
 .owner-options {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 6;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
   gap: 6px;
-  width: 100%;
+  width: min(520px, calc(100vw - 48px));
+  max-height: min(420px, calc(100vh - 260px));
+  overflow: auto;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fbfcfc;
+  background: var(--surface);
+  box-shadow: var(--shadow);
   padding: 8px;
 }
 
@@ -707,6 +753,22 @@ mark {
     min-width: 0;
     min-height: 42px;
     padding: 0 10px;
+  }
+
+  #task-controls {
+    align-items: stretch;
+  }
+
+  .owner-filter {
+    flex: 1 1 100%;
+  }
+
+  .owner-options {
+    right: auto;
+    left: 0;
+    grid-template-columns: 1fr;
+    width: 100%;
+    max-height: min(360px, calc(100vh - 230px));
   }
 
   .topline,
