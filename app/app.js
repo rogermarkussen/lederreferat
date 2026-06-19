@@ -3,12 +3,15 @@ import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
 
-const INDEX_VERSION = 2;
-const STORAGE_INDEX_KEY = "lmReferatSearch.index.v2";
-const STORAGE_FOLDER_KEY = "lmReferatSearch.folder.v2";
+const INDEX_VERSION = 3;
+const STORAGE_INDEX_KEY = "lmReferatSearch.index.v3";
+const STORAGE_FOLDER_KEY = "lmReferatSearch.folder.v3";
 const DB_NAME = "lmReferatSearch";
 const DB_STORE = "handles";
 const DB_HANDLE_KEY = "referatFolder";
+const PDF_LINE_Y_TOLERANCE = 2;
+const PDF_WORD_GAP_MIN = 1.2;
+const PDF_WORD_GAP_FONT_RATIO = 0.16;
 
 const CASE_RE = /^(?<number>[2-4]\.\d+)\s*[-–]?\s+(?<title>\S.+)$/;
 const CASE_NUMBER_ONLY_RE = /^(?<number>[2-4]\.\d+)$/;
@@ -75,6 +78,37 @@ function normalizePdfLine(text) {
     .replace(/\b(\d)\s*\.\s*(\d{2})\b/g, "$1.$2")
     .replace(/\bVirksomhet s\s*-\s*/g, "Virksomhets- ")
     .replace(/\s+\./g, ".");
+}
+
+function pdfItemEnd(item) {
+  return item.x + Math.max(item.width || 0, 0);
+}
+
+function shouldInsertPdfSpace(previous, next) {
+  if (!previous) return false;
+  if (/^[,.;:!?%)\]\}»”]/.test(next.text)) return false;
+  if (/[(\[\{«“]$/.test(previous.text)) return false;
+
+  const gap = next.x - pdfItemEnd(previous);
+  if (!Number.isFinite(gap)) return true;
+
+  const fontSize = Math.min(previous.height || Infinity, next.height || Infinity);
+  const fallbackFontSize = Math.max(previous.height || 0, next.height || 0, 10);
+  const threshold = Math.max(
+    PDF_WORD_GAP_MIN,
+    (Number.isFinite(fontSize) ? fontSize : fallbackFontSize) * PDF_WORD_GAP_FONT_RATIO,
+  );
+  return gap > threshold;
+}
+
+function joinPdfLineItems(items) {
+  let text = "";
+  let previous = null;
+  for (const item of items) {
+    text += `${text && shouldInsertPdfSpace(previous, item) ? " " : ""}${item.text}`;
+    previous = item;
+  }
+  return normalizePdfLine(text);
 }
 
 function escapeHtml(text) {
@@ -210,22 +244,24 @@ async function extractPdfLines(file) {
         text: normalizeSpace(item.str),
         x: item.transform[4],
         y: item.transform[5],
+        width: item.width || 0,
+        height: item.height || 0,
       }))
       .filter((item) => item.text);
     items.sort((a, b) => {
-      if (Math.abs(b.y - a.y) > 2) return b.y - a.y;
+      if (Math.abs(b.y - a.y) > PDF_LINE_Y_TOLERANCE) return b.y - a.y;
       return a.x - b.x;
     });
     let current = null;
     for (const item of items) {
-      if (!current || Math.abs(current.y - item.y) > 2) {
-        if (current) lines.push({ text: normalizePdfLine(current.parts.join(" ")), page: pageNumber });
-        current = { y: item.y, parts: [item.text] };
+      if (!current || Math.abs(current.y - item.y) > PDF_LINE_Y_TOLERANCE) {
+        if (current) lines.push({ text: joinPdfLineItems(current.items), page: pageNumber });
+        current = { y: item.y, items: [item] };
       } else {
-        current.parts.push(item.text);
+        current.items.push(item);
       }
     }
-    if (current) lines.push({ text: normalizePdfLine(current.parts.join(" ")), page: pageNumber });
+    if (current) lines.push({ text: joinPdfLineItems(current.items), page: pageNumber });
   }
   await pdf.destroy();
   return lines;
@@ -826,6 +862,19 @@ function highlight(text, query) {
   return escapeHtml(original).replace(pattern, "<mark>$1</mark>");
 }
 
+function excerptStart(text, start) {
+  if (start <= 0) return 0;
+  const boundary = text.lastIndexOf(" ", start);
+  if (boundary < 0) return 0;
+  return boundary >= Math.max(0, start - 30) ? boundary + 1 : start;
+}
+
+function excerptEnd(text, end) {
+  if (end >= text.length) return text.length;
+  const boundary = text.indexOf(" ", end);
+  return boundary >= 0 && boundary <= end + 30 ? boundary : end;
+}
+
 function excerpt(caseItem, query) {
   const text = [
     caseItem.title,
@@ -839,8 +888,8 @@ function excerpt(caseItem, query) {
   const normText = normalize(text);
   const term = tokenize(query).find((token) => normText.includes(token));
   if (!term) return text.slice(0, 260);
-  const start = Math.max(0, normText.indexOf(term) - 80);
-  const end = Math.min(text.length, start + 300);
+  const start = excerptStart(text, Math.max(0, normText.indexOf(term) - 80));
+  const end = excerptEnd(text, Math.min(text.length, start + 300));
   return `${start > 0 ? "..." : ""}${text.slice(start, end)}${end < text.length ? "..." : ""}`;
 }
 
@@ -942,6 +991,14 @@ async function initialize() {
     }
   }
   if (!hadCache) {
+    if (state.directoryHandle) {
+      try {
+        await indexDirectory(state.directoryHandle);
+        return;
+      } catch (error) {
+        els.datasetMeta.textContent = `Indeksen må bygges på nytt. ${error.message}`;
+      }
+    }
     setStatus("Velg mappe");
     render();
   }
