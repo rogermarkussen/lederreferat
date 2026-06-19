@@ -1,0 +1,7 @@
+referater/
+data/
+scripts/
+tmp/
+*.Zone.Identifier
+*Zone.Identifier
+.DS_Store

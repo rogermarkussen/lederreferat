@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="no">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LM-referatsøk</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="search-pane" aria-label="Søk i ledermøtereferater">
+        <div class="topline">
+          <div>
+            <h1>LM-referatsøk</h1>
+            <p id="dataset-meta">Velg mappen der referat-PDF-ene ligger.</p>
+          </div>
+          <div class="status" id="status-pill">Klar</div>
+        </div>
+
+        <div class="folder-row">
+          <button type="button" id="choose-folder">Åpne referatmappe</button>
+          <button type="button" id="reindex-folder">Indekser på nytt</button>
+          <div id="folder-meta">Ingen mappe valgt</div>
+        </div>
+
+        <label class="search-label" for="search">Søk</label>
+        <div class="search-row">
+          <input
+            id="search"
+            type="search"
+            autocomplete="off"
+            placeholder="Saksnummer, tema, ansvarlig eller aksjonspunkt"
+            autofocus
+          />
+          <button type="button" id="clear-search" title="Tøm søket" aria-label="Tøm søket">×</button>
+        </div>
+
+        <div class="filters" aria-label="Filtre">
+          <button type="button" class="filter active" data-filter="all">Alle</button>
+          <button type="button" class="filter" data-filter="actions">Med AP</button>
+          <button type="button" class="filter" data-filter="decisions">Vedtak</button>
+          <button type="button" class="filter" data-filter="recent">Nyeste</button>
+        </div>
+      </section>
+
+      <section class="results-pane">
+        <div class="result-head">
+          <h2 id="result-title">Treff</h2>
+          <div id="result-count"></div>
+        </div>
+        <ol id="results" class="results"></ol>
+      </section>
+    </main>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
