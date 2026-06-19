@@ -1004,7 +1004,8 @@ function ownerFilterOptions(tasks) {
 
 function renderOwnerFilter() {
   if (!els.taskOwnerFilter || !state.index) return;
-  const owners = ownerFilterOptions(state.index.task_data.tasks);
+  const statusFilteredTasks = state.index.task_data.tasks.filter(passesTaskStatusFilter);
+  const owners = ownerFilterOptions(statusFilteredTasks);
   const validKeys = new Set(owners.map((owner) => owner.key));
   state.taskOwners = new Set([...state.taskOwners].filter((key) => validKeys.has(key)));
   const allSelected = state.taskOwners.size === 0;
@@ -1114,9 +1115,14 @@ function passesFilter(caseItem) {
   return true;
 }
 
-function passesTaskFilter(task) {
+function passesTaskStatusFilter(task) {
   if (state.taskFilter === "open" && task.status === "done") return false;
   if (state.taskFilter === "done" && task.status !== "done") return false;
+  return true;
+}
+
+function passesTaskFilter(task) {
+  if (!passesTaskStatusFilter(task)) return false;
   if (state.taskOwners.size > 0 && !state.taskOwners.has(ownerFilterKey(task.owner))) return false;
   return true;
 }
@@ -1572,6 +1578,7 @@ for (const filter of els.taskFilters) {
   filter.addEventListener("click", () => {
     state.taskFilter = filter.dataset.taskFilter;
     els.taskFilters.forEach((item) => item.classList.toggle("active", item === filter));
+    renderOwnerFilter();
     renderAfterUserChange();
   });
 }
