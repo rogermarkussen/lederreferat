@@ -3,12 +3,15 @@ import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
 
-const INDEX_VERSION = 3;
-const STORAGE_INDEX_KEY = "lmReferatSearch.index.v3";
-const STORAGE_FOLDER_KEY = "lmReferatSearch.folder.v3";
+const INDEX_VERSION = 4;
+const TASK_DATA_VERSION = 1;
+const STORAGE_INDEX_KEY = "lmReferatSearch.index.v4";
+const STORAGE_FOLDER_KEY = "lmReferatSearch.folder.v4";
 const DB_NAME = "lmReferatSearch";
 const DB_STORE = "handles";
 const DB_HANDLE_KEY = "referatFolder";
+const TASK_DATA_DIR = "__oppgavedata__";
+const TASK_DATA_FILE = "oppgaver.json";
 const PDF_LINE_Y_TOLERANCE = 2;
 const PDF_WORD_GAP_MIN = 1.2;
 const PDF_WORD_GAP_FONT_RATIO = 0.16;
@@ -35,7 +38,10 @@ const STOP_HEADINGS = new Set(["sirkulasjonssaker", "agenda neste møte"]);
 const state = {
   index: null,
   directoryHandle: null,
+  view: "search",
   filter: "all",
+  taskFilter: "open",
+  taskOwner: "",
   query: "",
   dateFrom: "",
   dateTo: "",
@@ -43,6 +49,10 @@ const state = {
 };
 
 const els = {
+  viewTabs: [...document.querySelectorAll(".view-tab")],
+  caseControls: document.querySelector("#case-controls"),
+  taskControls: document.querySelector("#task-controls"),
+  searchLabel: document.querySelector(".search-label"),
   chooseFolder: document.querySelector("#choose-folder"),
   reindexFolder: document.querySelector("#reindex-folder"),
   folderMeta: document.querySelector("#folder-meta"),
@@ -52,6 +62,8 @@ const els = {
   dateTo: document.querySelector("#date-to"),
   clearDates: document.querySelector("#clear-dates"),
   filters: [...document.querySelectorAll(".filter")],
+  taskFilters: [...document.querySelectorAll(".task-filter")],
+  taskOwnerFilter: document.querySelector("#task-owner-filter"),
   results: document.querySelector("#results"),
   resultTitle: document.querySelector("#result-title"),
   resultCount: document.querySelector("#result-count"),
@@ -215,9 +227,9 @@ async function storeDirectoryHandle(handle) {
   });
 }
 
-async function ensureDirectoryPermission(handle, { request = true } = {}) {
+async function ensureDirectoryPermission(handle, { request = true, mode = "read" } = {}) {
   if (!handle) return false;
-  const options = { mode: "read" };
+  const options = { mode };
   if ((await handle.queryPermission(options)) === "granted") return true;
   if (!request) return false;
   return (await handle.requestPermission(options)) === "granted";
@@ -227,7 +239,7 @@ async function chooseDirectory() {
   if (!("showDirectoryPicker" in window)) {
     throw new Error("Nettleseren støtter ikke mappevalg. Bruk Chrome eller Edge over HTTPS.");
   }
-  const handle = await window.showDirectoryPicker({ mode: "read" });
+  const handle = await window.showDirectoryPicker({ mode: "readwrite" });
   state.directoryHandle = handle;
   await storeDirectoryHandle(handle);
   writeLocalStorageJson(STORAGE_FOLDER_KEY, {
@@ -658,12 +670,178 @@ async function buildIndexFromFiles(files, folderName) {
   };
 }
 
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function defaultTaskData(folderName) {
+  const timestamp = nowIso();
+  return {
+    version: TASK_DATA_VERSION,
+    generated_at: timestamp,
+    updated_at: timestamp,
+    source_dir: folderName,
+    tasks: [],
+  };
+}
+
+async function readTaskDataFromFolder(handle, folderName) {
+  try {
+    const taskDir = await handle.getDirectoryHandle(TASK_DATA_DIR);
+    const fileHandle = await taskDir.getFileHandle(TASK_DATA_FILE);
+    const file = await fileHandle.getFile();
+    const content = await file.text();
+    if (!content.trim()) return { data: defaultTaskData(folderName), exists: true };
+    const data = JSON.parse(content);
+    if (!data || !Array.isArray(data.tasks)) {
+      throw new Error(`${TASK_DATA_FILE} har ikke gyldig oppgavestruktur.`);
+    }
+    return {
+      data: {
+        ...data,
+        version: data.version || TASK_DATA_VERSION,
+        source_dir: data.source_dir || folderName,
+        tasks: data.tasks,
+      },
+      exists: true,
+    };
+  } catch (error) {
+    if (error.name === "NotFoundError") {
+      return { data: defaultTaskData(folderName), exists: false };
+    }
+    throw error;
+  }
+}
+
+async function writeTaskDataToFolder(handle, taskData) {
+  const taskDir = await handle.getDirectoryHandle(TASK_DATA_DIR, { create: true });
+  const fileHandle = await taskDir.getFileHandle(TASK_DATA_FILE, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(`${JSON.stringify(taskData, null, 2)}\n`);
+  await writable.close();
+}
+
+function taskContextForCase(caseItem) {
+  const parts = [
+    caseItem.decision_text ? `Vedtak: ${caseItem.decision_text}` : "",
+    caseItem.followup_text ? `Oppfølging: ${caseItem.followup_text}` : "",
+    caseItem.body_text,
+  ].filter(Boolean);
+  return normalizeSpace(parts.join(" ")).slice(0, 900);
+}
+
+function taskFromActionPoint(ap, caseById, documentById, timestamp) {
+  const caseItem = caseById.get(ap.case_id);
+  const doc = documentById.get(ap.document_id);
+  return {
+    id: ap.id,
+    action_id: ap.action_id,
+    status: "open",
+    owner: ap.responsible || "",
+    due_date: "",
+    extra_info: "",
+    text: ap.text,
+    created_at: timestamp,
+    updated_at: timestamp,
+    source: {
+      document_id: ap.document_id,
+      file_name: doc?.file_name || "",
+      lm_number: doc?.lm_number || "",
+      meeting_date: ap.meeting_date || caseItem?.meeting_date || "",
+      case_id: ap.case_id,
+      case_number: ap.case_number || caseItem?.case_number || "",
+      case_title: ap.case_title || caseItem?.title || "",
+      source_page: ap.source_page || null,
+    },
+    context: taskContextForCase(caseItem || {}),
+  };
+}
+
+function mergeTaskData(index, taskData, existed) {
+  const timestamp = nowIso();
+  const caseById = new Map(index.cases.map((caseItem) => [caseItem.id, caseItem]));
+  const documentById = new Map(index.documents.map((doc) => [doc.id, doc]));
+  const tasks = [...taskData.tasks];
+  const seenIds = new Set(tasks.map((task) => task.id));
+  const newTasks = [];
+
+  for (const ap of index.action_points) {
+    if (seenIds.has(ap.id)) continue;
+    const task = taskFromActionPoint(ap, caseById, documentById, timestamp);
+    tasks.push(task);
+    newTasks.push(task);
+    seenIds.add(ap.id);
+  }
+
+  if (!newTasks.length && existed) {
+    return { taskData: { ...taskData, tasks }, changed: false, added: 0 };
+  }
+
+  return {
+    taskData: {
+      ...taskData,
+      version: taskData.version || TASK_DATA_VERSION,
+      generated_at: taskData.generated_at || timestamp,
+      updated_at: timestamp,
+      tasks,
+    },
+    changed: true,
+    added: newTasks.length,
+  };
+}
+
+async function syncTaskDataForIndex(index, handle) {
+  if (!(await ensureDirectoryPermission(handle, { mode: "readwrite" }))) {
+    throw new Error(`Mangler skrivetilgang til å opprette ${TASK_DATA_DIR}. Velg referatmappen på nytt.`);
+  }
+  setStatus("Synkroniserer oppgaver", true);
+  const { data, exists } = await readTaskDataFromFolder(handle, index.source_dir);
+  const merged = mergeTaskData(index, data, exists);
+  if (merged.changed) {
+    await writeTaskDataToFolder(handle, merged.taskData);
+  }
+  return merged.taskData;
+}
+
+function normalizedTask(task) {
+  return {
+    id: task.id,
+    action_id: task.action_id || "",
+    status: task.status === "done" ? "done" : "open",
+    owner: task.owner || "",
+    due_date: task.due_date || "",
+    extra_info: task.extra_info || "",
+    text: task.text || "",
+    created_at: task.created_at || "",
+    updated_at: task.updated_at || "",
+    source: task.source || {},
+    context: task.context || "",
+    search_norm: normalize(
+      [
+        task.action_id,
+        task.text,
+        task.owner,
+        task.due_date,
+        task.extra_info,
+        task.source?.lm_number,
+        task.source?.meeting_date,
+        task.source?.case_number,
+        task.source?.case_title,
+        task.source?.file_name,
+        task.context,
+      ].join(" "),
+    ),
+  };
+}
+
 function prepareIndex(rawIndex) {
   rawIndex.documentsById = new Map(rawIndex.documents.map((doc) => [doc.id, doc]));
   rawIndex.cases = rawIndex.cases.map((caseItem) => ({
     ...caseItem,
     searchable: normalize(caseItem.search_text),
   }));
+  rawIndex.task_data = rawIndex.task_data || defaultTaskData(rawIndex.source_dir);
+  rawIndex.task_data.tasks = (rawIndex.task_data.tasks || []).map(normalizedTask);
   return rawIndex;
 }
 
@@ -677,21 +855,24 @@ function activateIndex(index) {
   els.dateFrom.max = latest;
   els.dateTo.min = earliest;
   els.dateTo.max = latest;
-  els.datasetMeta.textContent = `${counts.documents} referater, ${counts.cases} saker, ${counts.action_points} aksjonspunkter`;
+  const taskCount = state.index.task_data.tasks.length;
+  els.datasetMeta.textContent = `${counts.documents} referater, ${counts.cases} saker, ${counts.action_points} aksjonspunkter, ${taskCount} oppgaver`;
   const generated = index.generated_at ? `Indeks ferdig ${new Date(index.generated_at).toLocaleString("no-NO")}` : "Indeks klar";
   setStatus(generated);
+  renderOwnerFilter();
   render();
 }
 
 async function indexDirectory(handle) {
-  if (!(await ensureDirectoryPermission(handle))) {
-    throw new Error("Mangler lesetilgang til valgt mappe.");
+  if (!(await ensureDirectoryPermission(handle, { mode: "readwrite" }))) {
+    throw new Error("Mangler lese- og skrivetilgang til valgt mappe.");
   }
   setStatus("Starter indeksering", true);
   setFolderMeta(`Valgt mappe: ${handle.name}`);
   const files = await listPdfFiles(handle);
   if (!files.length) throw new Error("Fant ingen PDF-filer i valgt mappe.");
   const index = await buildIndexFromFiles(files, handle.name);
+  index.task_data = await syncTaskDataForIndex(index, handle);
   writeLocalStorageJson(STORAGE_INDEX_KEY, index);
   writeLocalStorageJson(STORAGE_FOLDER_KEY, {
     name: handle.name,
@@ -788,6 +969,45 @@ function documentFor(caseItem) {
   return state.index.documentsById.get(caseItem.document_id);
 }
 
+function taskById(taskId) {
+  return state.index?.task_data.tasks.find((task) => task.id === taskId) || null;
+}
+
+function taskStatusLabel(task) {
+  return task.status === "done" ? "Utført" : "Åpen";
+}
+
+function renderOwnerFilter() {
+  if (!els.taskOwnerFilter || !state.index) return;
+  const owners = [...new Set(state.index.task_data.tasks.map((task) => task.owner || "Uten ansvarlig"))].sort(
+    collator.compare,
+  );
+  const current = state.taskOwner;
+  els.taskOwnerFilter.innerHTML = [
+    `<option value="">Alle</option>`,
+    ...owners.map((owner) => `<option value="${escapeHtml(owner)}">${escapeHtml(owner)}</option>`),
+  ].join("");
+  if (owners.includes(current)) {
+    els.taskOwnerFilter.value = current;
+  } else {
+    state.taskOwner = "";
+    els.taskOwnerFilter.value = "";
+  }
+}
+
+function setView(view) {
+  state.view = view;
+  els.viewTabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.view === view));
+  els.caseControls.hidden = view !== "search";
+  els.taskControls.hidden = view !== "tasks";
+  els.searchLabel.textContent = view === "tasks" ? "Søk i oppgaver" : "Søk";
+  els.search.placeholder =
+    view === "tasks"
+      ? "AP, ansvarlig, frist, sak eller tilleggsinfo"
+      : "Saksnummer, tema, ansvarlig eller aksjonspunkt";
+  renderAfterUserChange();
+}
+
 function fieldScore(field, terms, exactPhrase, weight, phraseWeight) {
   const text = normalize(field);
   if (!text) return 0;
@@ -827,6 +1047,22 @@ function scoreCase(caseItem, query) {
   return Math.round(score);
 }
 
+function scoreTask(task, query) {
+  const terms = tokenize(query);
+  const phrase = normalize(query);
+  if (!terms.length) return 1;
+  let score = 0;
+  score += fieldScore(task.action_id, terms, phrase, 120, 520);
+  score += fieldScore(task.text, terms, phrase, 42, 220);
+  score += fieldScore(task.owner, terms, phrase, 38, 160);
+  score += fieldScore(task.extra_info, terms, phrase, 30, 130);
+  score += fieldScore(task.source?.case_title, terms, phrase, 28, 120);
+  score += fieldScore(task.context, terms, phrase, 14, 70);
+  score += fieldScore(task.due_date, terms, phrase, 24, 100);
+  if (normalize(task.action_id) === phrase) score += 650;
+  return Math.round(score);
+}
+
 function passesFilter(caseItem) {
   const meetingDate = caseItem.meeting_date || "";
   if (state.dateFrom && (!meetingDate || meetingDate < state.dateFrom)) return false;
@@ -837,6 +1073,13 @@ function passesFilter(caseItem) {
     const newest = state.index.documents.at(-1)?.meeting_date;
     return caseItem.meeting_date === newest;
   }
+  return true;
+}
+
+function passesTaskFilter(task) {
+  if (state.taskFilter === "open" && task.status === "done") return false;
+  if (state.taskFilter === "done" && task.status !== "done") return false;
+  if (state.taskOwner && (task.owner || "Uten ansvarlig") !== state.taskOwner) return false;
   return true;
 }
 
@@ -876,6 +1119,26 @@ function rankedCases() {
       return collator.compare(a.caseItem.case_number, b.caseItem.case_number);
     })
     .slice(0, 25);
+}
+
+function rankedTasks() {
+  const query = state.query.trim();
+  const filtered = state.index.task_data.tasks
+    .filter(passesTaskFilter)
+    .map((task) => ({ task, score: scoreTask(task, query) }))
+    .filter((item) => !query || item.score > 0);
+
+  return filtered.sort((a, b) => {
+    if (query && b.score !== a.score) return b.score - a.score;
+    if (a.task.status !== b.task.status) return a.task.status === "open" ? -1 : 1;
+    const aDue = a.task.due_date || "9999-12-31";
+    const bDue = b.task.due_date || "9999-12-31";
+    const dueCompare = collator.compare(aDue, bDue);
+    if (dueCompare !== 0) return dueCompare;
+    const ownerCompare = collator.compare(a.task.owner || "", b.task.owner || "");
+    if (ownerCompare !== 0) return ownerCompare;
+    return collator.compare(b.task.source?.meeting_date || "", a.task.source?.meeting_date || "");
+  });
 }
 
 function highlight(text, query) {
@@ -970,7 +1233,104 @@ function renderResult({ caseItem, score }) {
   `;
 }
 
+function renderTask({ task, score }) {
+  const source = task.source || {};
+  const owner = task.owner || "Uten ansvarlig";
+  return `
+    <li class="task-card ${task.status === "done" ? "done" : ""}">
+      <div class="task-card-head">
+        <div class="case-meta">
+          <span class="pill">${highlight(task.action_id, state.query)}</span>
+          <span class="task-status">${taskStatusLabel(task)}</span>
+          <span>${formatDate(source.meeting_date)}</span>
+          <span>${escapeHtml(source.case_number || "")}</span>
+          <span>${highlight(source.case_title || "", state.query)}</span>
+          ${state.query ? `<span class="score">score ${score}</span>` : ""}
+        </div>
+        <label class="task-done">
+          <input type="checkbox" data-task-done data-task-id="${escapeHtml(task.id)}" ${
+            task.status === "done" ? "checked" : ""
+          } />
+          Utført
+        </label>
+      </div>
+      <h3>${highlight(task.text, state.query)}</h3>
+      ${task.context ? `<p class="task-context">${highlight(task.context, state.query)}</p>` : ""}
+      <div class="task-source">
+        <button class="open-pdf-link" type="button" data-document-id="${escapeHtml(source.document_id || "")}">
+          ${escapeHtml(source.file_name || "Åpne referat")}
+        </button>
+        ${source.lm_number ? `<span>LM ${escapeHtml(source.lm_number)}</span>` : ""}
+        ${source.source_page ? `<span>side ${escapeHtml(source.source_page)}</span>` : ""}
+      </div>
+      <div class="task-fields">
+        <label>
+          Ansvarlig
+          <input
+            type="text"
+            value="${escapeHtml(owner === "Uten ansvarlig" ? "" : owner)}"
+            data-task-field="owner"
+            data-task-id="${escapeHtml(task.id)}"
+          />
+        </label>
+        <label>
+          Frist
+          <input
+            type="date"
+            value="${escapeHtml(task.due_date || "")}"
+            data-task-field="due_date"
+            data-task-id="${escapeHtml(task.id)}"
+          />
+        </label>
+        <label class="task-notes">
+          Tilleggsinfo
+          <textarea
+            rows="2"
+            data-task-field="extra_info"
+            data-task-id="${escapeHtml(task.id)}"
+          >${escapeHtml(task.extra_info || "")}</textarea>
+        </label>
+      </div>
+    </li>
+  `;
+}
+
+function renderTasks() {
+  if (!state.index) {
+    els.resultTitle.textContent = "Oppgaver";
+    els.resultCount.textContent = "";
+    els.results.innerHTML = `<li class="empty">Velg en lokal referatmappe for å hente oppgaver.</li>`;
+    return;
+  }
+  const tasks = rankedTasks();
+  const allTasks = state.index.task_data.tasks;
+  const openCount = allTasks.filter((task) => task.status !== "done").length;
+  const doneCount = allTasks.length - openCount;
+  els.resultTitle.textContent = "Oppgaver";
+  els.resultCount.textContent = `${tasks.length} vist, ${openCount} åpne, ${doneCount} utførte`;
+  if (!tasks.length) {
+    els.results.innerHTML = `<li class="empty">Ingen oppgaver.</li>`;
+    return;
+  }
+
+  let currentOwner = null;
+  const html = [];
+  for (const item of tasks) {
+    const owner = item.task.owner || "Uten ansvarlig";
+    if (owner !== currentOwner) {
+      currentOwner = owner;
+      html.push(`<li class="owner-heading">${escapeHtml(owner)}</li>`);
+    }
+    html.push(renderTask(item));
+  }
+  els.results.innerHTML = html.join("");
+}
+
 function render() {
+  if (state.view === "tasks") {
+    renderTasks();
+    return;
+  }
   if (!state.index) {
     els.resultTitle.textContent = "Treff";
     els.resultCount.textContent = "";
@@ -983,6 +1343,52 @@ function render() {
   els.results.innerHTML = ranked.length
     ? ranked.map(renderResult).join("")
     : `<li class="empty">Ingen treff.</li>`;
+}
+
+async function saveTaskData() {
+  if (!state.index || !state.directoryHandle) {
+    throw new Error("Mangler valgt referatmappe.");
+  }
+  if (!(await ensureDirectoryPermission(state.directoryHandle, { mode: "readwrite" }))) {
+    throw new Error(`Mangler skrivetilgang til ${TASK_DATA_DIR}.`);
+  }
+  const taskData = {
+    ...state.index.task_data,
+    updated_at: nowIso(),
+    tasks: state.index.task_data.tasks.map(({ search_norm, ...task }) => task),
+  };
+  await writeTaskDataToFolder(state.directoryHandle, taskData);
+  state.index.task_data = {
+    ...taskData,
+    tasks: taskData.tasks.map(normalizedTask),
+  };
+  writeLocalStorageJson(STORAGE_INDEX_KEY, {
+    ...state.index,
+    task_data: taskData,
+    documentsById: undefined,
+  });
+}
+
+async function updateTask(taskId, changes) {
+  const task = taskById(taskId);
+  if (!task) return;
+  const nextTask = normalizedTask({
+    ...task,
+    ...changes,
+    updated_at: nowIso(),
+  });
+  const index = state.index.task_data.tasks.findIndex((item) => item.id === taskId);
+  state.index.task_data.tasks[index] = nextTask;
+  renderOwnerFilter();
+  render();
+  try {
+    setStatus("Lagrer oppgaver", true);
+    await saveTaskData();
+    setStatus("Oppgaver lagret");
+  } catch (error) {
+    setStatus("Kunne ikke lagre");
+    els.datasetMeta.textContent = error.message;
+  }
 }
 
 async function openDocument(documentId) {
@@ -1091,6 +1497,29 @@ els.results.addEventListener("click", (event) => {
   openDocument(button.dataset.documentId);
 });
 
+els.results.addEventListener("change", (event) => {
+  const doneToggle = event.target.closest("[data-task-done]");
+  if (doneToggle) {
+    updateTask(doneToggle.dataset.taskId, {
+      status: doneToggle.checked ? "done" : "open",
+    });
+    return;
+  }
+
+  const field = event.target.closest("[data-task-field]");
+  if (!field) return;
+  const value = field.dataset.taskField === "extra_info" ? field.value.trim() : normalizeSpace(field.value);
+  updateTask(field.dataset.taskId, {
+    [field.dataset.taskField]: value,
+  });
+});
+
+for (const tab of els.viewTabs) {
+  tab.addEventListener("click", () => {
+    setView(tab.dataset.view);
+  });
+}
+
 for (const filter of els.filters) {
   filter.addEventListener("click", () => {
     state.filter = filter.dataset.filter;
@@ -1099,10 +1528,24 @@ for (const filter of els.filters) {
   });
 }
 
+for (const filter of els.taskFilters) {
+  filter.addEventListener("click", () => {
+    state.taskFilter = filter.dataset.taskFilter;
+    els.taskFilters.forEach((item) => item.classList.toggle("active", item === filter));
+    renderAfterUserChange();
+  });
+}
+
+els.taskOwnerFilter.addEventListener("change", (event) => {
+  state.taskOwner = event.target.value;
+  renderAfterUserChange();
+});
+
 window.__lmReferatSearch = {
   buildIndexFromFiles,
   parsePdfFile,
   extractPdfLines,
+  mergeTaskData,
   normalize,
 };
 

@@ -26,9 +26,17 @@ I appen:
 
 Selve mappehandle-en kan ikke lagres i `localStorage` av nettlesersikkerhetsgrunner. Den lagres derfor i IndexedDB, mens foldermetadata og ferdig indeks lagres i `localStorage`.
 
+## Oppgaver
+
+Fanen `Oppgaver` bruker aksjonspunktene (`AP...`) som parseren finner i referatene. Ved indeksering opprettes mappen `__oppgavedata__` i referatmappen, med filen `oppgaver.json`.
+
+Hvis `oppgaver.json` allerede finnes, overskriver ikke indekseringen eksisterende oppgaver. Den legger bare til nye AP-er fra nye eller endrede referater. Manuelle endringer som status, ansvarlig, frist og tilleggsinfo lagres tilbake i samme fil.
+
+Oppgavevisningen kan filtreres på åpne, utførte og alle oppgaver, og på ansvarlig. Søket dekker AP-id, oppgavetekst, ansvarlig, frist, sakstittel, kontekst og tilleggsinfo.
+
 ## Nettleserkrav
 
-Mappevalg bruker File System Access API. Bruk Chrome eller Edge. På GitHub Pages må appen kjøres over HTTPS, som GitHub Pages gjør automatisk.
+Mappevalg bruker File System Access API med lese- og skrivetilgang. Bruk Chrome eller Edge. På GitHub Pages må appen kjøres over HTTPS, som GitHub Pages gjør automatisk.
 
 ## Søk
 
@@ -53,4 +61,5 @@ Rangeringen er deterministisk. Eksakt AP-id og saksnummer gir streng match. Elle
 - `app/index.html` - statisk HTML
 - `app/styles.css` - grensesnitt
 - `app/app.js` - PDF-indeksering, lokal cache og søk
+- `__oppgavedata__/oppgaver.json` - oppgavedata som appen oppretter i valgt referatmappe
 - `scripts/build_index.py` - eldre utviklingsscript for sammenligning, ikke nødvendig for appen

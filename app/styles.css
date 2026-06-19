@@ -28,7 +28,9 @@ body {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -60,6 +62,39 @@ input {
 .topline,
 .result-head {
   justify-content: space-between;
+}
+
+.view-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.view-tab,
+.task-filter {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 720;
+  padding: 0 14px;
+}
+
+.view-tab:hover,
+.task-filter:hover {
+  border-color: #aeb9c1;
+  background: #e8edf0;
+}
+
+.view-tab.active,
+.task-filter.active {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #ffffff;
 }
 
 h1,
@@ -258,6 +293,38 @@ h2 {
   background: #e8edf0;
 }
 
+.owner-filter {
+  display: grid;
+  gap: 4px;
+  width: min(260px, 100%);
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.owner-filter select,
+.task-fields input,
+.task-fields textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+  color: var(--text);
+}
+
+.owner-filter select {
+  min-height: 36px;
+  padding: 0 10px;
+}
+
+.owner-filter select:focus,
+.task-fields input:focus,
+.task-fields textarea:focus {
+  border-color: var(--focus);
+  outline: 3px solid rgba(47, 125, 209, 0.18);
+}
+
 .filters {
   display: flex;
   flex-wrap: wrap;
@@ -302,7 +369,9 @@ h2 {
 }
 
 .result:focus-within,
-.result:hover {
+.result:hover,
+.task-card:focus-within,
+.task-card:hover {
   border-color: #b7c2c9;
 }
 
@@ -397,6 +466,104 @@ h2 {
   font-weight: 680;
 }
 
+.owner-heading {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 780;
+  list-style: none;
+  padding: 6px 2px 0;
+}
+
+.task-card {
+  display: grid;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.task-card.done {
+  background: #f7f8f8;
+}
+
+.task-card.done h3,
+.task-card.done .task-context {
+  color: var(--muted);
+}
+
+.task-card-head,
+.task-source,
+.task-done {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.task-card-head {
+  justify-content: space-between;
+}
+
+.task-status {
+  color: var(--accent);
+  font-weight: 760;
+}
+
+.task-done {
+  flex: 0 0 auto;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.task-done input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand);
+}
+
+.task-card h3 {
+  font-size: 1rem;
+  font-weight: 740;
+}
+
+.task-context {
+  color: #2d3941;
+  font-size: 0.92rem;
+}
+
+.task-source {
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.task-fields {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(140px, 0.55fr) minmax(240px, 1.4fr);
+  gap: 10px;
+}
+
+.task-fields label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.task-fields input {
+  min-height: 36px;
+  padding: 0 10px;
+}
+
+.task-fields textarea {
+  min-height: 36px;
+  resize: vertical;
+  padding: 8px 10px;
+}
+
 mark {
   background: #ffe08a;
   color: inherit;
@@ -424,10 +591,15 @@ mark {
 
   .topline,
   .result-head,
-  .folder-row {
+  .folder-row,
+  .task-card-head {
     align-items: flex-start;
     flex-direction: column;
     gap: 6px;
+  }
+
+  .task-fields {
+    grid-template-columns: 1fr;
   }
 
   .score {

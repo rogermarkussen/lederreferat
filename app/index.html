@@ -17,6 +17,11 @@
           <div class="status" id="status-pill">Klar</div>
         </div>
 
+        <nav class="view-tabs" aria-label="Visning">
+          <button type="button" class="view-tab active" data-view="search">Referatsøk</button>
+          <button type="button" class="view-tab" data-view="tasks">Oppgaver</button>
+        </nav>
+
         <div class="folder-row">
           <button type="button" id="choose-folder">Åpne referatmappe</button>
           <button type="button" id="reindex-folder">Indekser på nytt</button>
@@ -35,23 +40,39 @@
           <button type="button" id="clear-search" title="Tøm søket" aria-label="Tøm søket">×</button>
         </div>
 
-        <div class="date-range" aria-label="Datointervall">
-          <label for="date-from">
-            Fra
-            <input id="date-from" type="date" />
-          </label>
-          <label for="date-to">
-            Til
-            <input id="date-to" type="date" />
-          </label>
-          <button type="button" id="clear-dates">Nullstill datoer</button>
+        <div id="case-controls">
+          <div class="date-range" aria-label="Datointervall">
+            <label for="date-from">
+              Fra
+              <input id="date-from" type="date" />
+            </label>
+            <label for="date-to">
+              Til
+              <input id="date-to" type="date" />
+            </label>
+            <button type="button" id="clear-dates">Nullstill datoer</button>
+          </div>
+
+          <div class="filters" aria-label="Filtre">
+            <button type="button" class="filter active" data-filter="all">Alle</button>
+            <button type="button" class="filter" data-filter="actions">Med AP</button>
+            <button type="button" class="filter" data-filter="decisions">Vedtak</button>
+            <button type="button" class="filter" data-filter="recent">Nyeste</button>
+          </div>
         </div>
 
-        <div class="filters" aria-label="Filtre">
-          <button type="button" class="filter active" data-filter="all">Alle</button>
-          <button type="button" class="filter" data-filter="actions">Med AP</button>
-          <button type="button" class="filter" data-filter="decisions">Vedtak</button>
-          <button type="button" class="filter" data-filter="recent">Nyeste</button>
+        <div id="task-controls" hidden>
+          <div class="filters" aria-label="Oppgavefiltre">
+            <button type="button" class="task-filter active" data-task-filter="open">Åpne</button>
+            <button type="button" class="task-filter" data-task-filter="done">Utførte</button>
+            <button type="button" class="task-filter" data-task-filter="all">Alle</button>
+          </div>
+          <label class="owner-filter" for="task-owner-filter">
+            Ansvarlig
+            <select id="task-owner-filter">
+              <option value="">Alle</option>
+            </select>
+          </label>
         </div>
       </section>
 
