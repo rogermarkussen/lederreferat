@@ -48,6 +48,7 @@ textarea {
   border-radius: 8px;
   box-shadow: var(--shadow);
   padding: 20px;
+  overflow: hidden;
 }
 
 .topline,
@@ -66,12 +67,30 @@ textarea {
 
 .view-tabs {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 16px;
+  align-items: end;
+  gap: 2px;
+  margin: -20px -20px 20px;
+  padding: 12px 20px 0;
+  background: linear-gradient(#fbfcfc, #f3f6f7);
+  border-bottom: 1px solid var(--line);
 }
 
-.view-tab,
+.view-tab {
+  min-width: 132px;
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.92rem;
+  font-weight: 760;
+  padding: 0 18px;
+  position: relative;
+  top: 1px;
+}
+
 .task-filter {
   min-height: 36px;
   border: 1px solid var(--line);
@@ -84,13 +103,34 @@ textarea {
   padding: 0 14px;
 }
 
-.view-tab:hover,
+.view-tab:hover {
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--text);
+}
+
 .task-filter:hover {
   border-color: #aeb9c1;
   background: #e8edf0;
 }
 
-.view-tab.active,
+.view-tab.active {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--brand-dark);
+  box-shadow: 0 -1px 0 #ffffff inset;
+}
+
+.view-tab.active::after {
+  position: absolute;
+  right: 16px;
+  bottom: 0;
+  left: 16px;
+  height: 3px;
+  border-radius: 999px 999px 0 0;
+  background: var(--brand);
+  content: "";
+}
+
 .task-filter.active {
   border-color: var(--brand);
   background: var(--brand);
@@ -587,6 +627,18 @@ mark {
 
   .search-pane {
     padding: 14px;
+  }
+
+  .view-tabs {
+    margin: -14px -14px 16px;
+    padding: 10px 12px 0;
+  }
+
+  .view-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 42px;
+    padding: 0 10px;
   }
 
   .topline,

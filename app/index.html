@@ -9,6 +9,11 @@
   <body>
     <main class="shell">
       <section class="search-pane" aria-label="Søk i ledermøtereferater">
+        <nav class="view-tabs" aria-label="Visning">
+          <button type="button" class="view-tab active" data-view="search">Referatsøk</button>
+          <button type="button" class="view-tab" data-view="tasks">Oppgaver</button>
+        </nav>
+
         <div class="topline">
           <div>
             <h1>LM-referatsøk</h1>
@@ -16,11 +21,6 @@
           </div>
           <div class="status" id="status-pill">Klar</div>
         </div>
-
-        <nav class="view-tabs" aria-label="Visning">
-          <button type="button" class="view-tab active" data-view="search">Referatsøk</button>
-          <button type="button" class="view-tab" data-view="tasks">Oppgaver</button>
-        </nav>
 
         <div class="folder-row">
           <button type="button" id="choose-folder">Åpne referatmappe</button>
