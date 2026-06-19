@@ -163,6 +163,43 @@ function tokenize(query) {
   return rawTerms.filter((term) => term.length > 1);
 }
 
+function parseSearchQuery(query) {
+  const exactPhrases = [];
+  const remainder = String(query || "").replace(/"([^"]+)"/g, (_match, phrase) => {
+    const normalized = normalize(phrase);
+    if (normalized) exactPhrases.push(normalized);
+    return " ";
+  });
+  const terms = tokenize(remainder);
+  return {
+    raw: String(query || "").trim(),
+    terms,
+    exactPhrases,
+    freePhrase: normalize(remainder),
+  };
+}
+
+function isSearchWordChar(character) {
+  return /^[a-z0-9æøå]$/i.test(character || "");
+}
+
+function hasWholeWord(text, term) {
+  if (!text || !term) return false;
+  let index = text.indexOf(term);
+  while (index >= 0) {
+    const before = text[index - 1] || "";
+    const after = text[index + term.length] || "";
+    if (!isSearchWordChar(before) && !isSearchWordChar(after)) return true;
+    index = text.indexOf(term, index + 1);
+  }
+  return false;
+}
+
+function matchesExactPhrases(searchText, parsedQuery) {
+  if (!parsedQuery.exactPhrases.length) return true;
+  return parsedQuery.exactPhrases.every((phrase) => searchText.includes(phrase));
+}
+
 function setStatus(text, busy = false) {
   state.busy = busy;
   els.status.textContent = text;
@@ -1047,58 +1084,59 @@ function setView(view) {
   renderAfterUserChange();
 }
 
-function fieldScore(field, terms, exactPhrase, weight, phraseWeight) {
+function fieldScore(field, parsedQuery, weight, phraseWeight) {
   const text = normalize(field);
   if (!text) return 0;
-  let score = text.includes(exactPhrase) && exactPhrase.length > 1 ? phraseWeight : 0;
-  for (const term of terms) {
-    if (text === term) score += weight * 3;
+  let score = text.includes(parsedQuery.freePhrase) && parsedQuery.freePhrase.length > 1 ? phraseWeight : 0;
+  for (const exactPhrase of parsedQuery.exactPhrases) {
+    if (text.includes(exactPhrase)) score += phraseWeight * 1.4;
+  }
+  for (const term of parsedQuery.terms) {
+    if (text === term) score += weight * 4;
+    else if (hasWholeWord(text, term)) score += weight * 2.8;
     else if (text.startsWith(term)) score += weight * 1.8;
     else if (text.includes(term)) score += weight;
   }
   return score;
 }
 
-function scoreCase(caseItem, query) {
-  const terms = tokenize(query);
-  const phrase = normalize(query);
-  if (!terms.length) return 1;
+function scoreCase(caseItem, parsedQuery) {
+  if (!parsedQuery.terms.length && !parsedQuery.exactPhrases.length) return 1;
   const actionsText = caseItem.action_points
     .map((ap) => `${ap.action_id} ${ap.text} ${ap.responsible || ""}`)
     .join(" ");
   let score = 0;
-  score += fieldScore(caseItem.case_number, terms, phrase, 120, 520);
-  score += fieldScore(caseItem.title, terms, phrase, 42, 220);
-  score += fieldScore(actionsText, terms, phrase, 34, 185);
-  score += fieldScore(caseItem.decision_text, terms, phrase, 18, 95);
-  score += fieldScore(caseItem.followup_text, terms, phrase, 18, 90);
-  score += fieldScore(caseItem.body_text, terms, phrase, 9, 54);
+  score += fieldScore(caseItem.case_number, parsedQuery, 120, 520);
+  score += fieldScore(caseItem.title, parsedQuery, 42, 220);
+  score += fieldScore(actionsText, parsedQuery, 34, 185);
+  score += fieldScore(caseItem.decision_text, parsedQuery, 18, 95);
+  score += fieldScore(caseItem.followup_text, parsedQuery, 18, 90);
+  score += fieldScore(caseItem.body_text, parsedQuery, 9, 54);
   score += fieldScore(
     caseItem.action_points.map((ap) => ap.responsible || "").join(" "),
-    terms,
-    phrase,
+    parsedQuery,
     38,
     160,
   );
-  if (caseItem.action_points.some((ap) => normalize(ap.action_id) === phrase)) score += 650;
-  if (normalize(caseItem.case_number) === phrase) score += 700;
+  if (parsedQuery.terms.some((term) => caseItem.action_points.some((ap) => normalize(ap.action_id) === term))) {
+    score += 650;
+  }
+  if (parsedQuery.terms.some((term) => normalize(caseItem.case_number) === term)) score += 700;
   if (caseItem.action_points.length > 0 && score > 0) score += 18;
   return Math.round(score);
 }
 
-function scoreTask(task, query) {
-  const terms = tokenize(query);
-  const phrase = normalize(query);
-  if (!terms.length) return 1;
+function scoreTask(task, parsedQuery) {
+  if (!parsedQuery.terms.length && !parsedQuery.exactPhrases.length) return 1;
   let score = 0;
-  score += fieldScore(task.action_id, terms, phrase, 120, 520);
-  score += fieldScore(task.text, terms, phrase, 42, 220);
-  score += fieldScore(task.owner, terms, phrase, 38, 160);
-  score += fieldScore(task.extra_info, terms, phrase, 30, 130);
-  score += fieldScore(task.source?.case_title, terms, phrase, 28, 120);
-  score += fieldScore(task.context, terms, phrase, 14, 70);
-  score += fieldScore(task.due_date, terms, phrase, 24, 100);
-  if (normalize(task.action_id) === phrase) score += 650;
+  score += fieldScore(task.action_id, parsedQuery, 120, 520);
+  score += fieldScore(task.text, parsedQuery, 42, 220);
+  score += fieldScore(task.owner, parsedQuery, 38, 160);
+  score += fieldScore(task.extra_info, parsedQuery, 30, 130);
+  score += fieldScore(task.source?.case_title, parsedQuery, 28, 120);
+  score += fieldScore(task.context, parsedQuery, 14, 70);
+  score += fieldScore(task.due_date, parsedQuery, 24, 100);
+  if (parsedQuery.terms.some((term) => normalize(task.action_id) === term)) score += 650;
   return Math.round(score);
 }
 
@@ -1129,19 +1167,25 @@ function passesTaskFilter(task) {
 
 function rankedCases() {
   const query = state.query.trim();
-  const phrase = normalize(query);
-  const exactActionQuery = /^ap\d+-\d+$/.test(phrase);
-  const exactCaseQuery = /^[2-4]\.\d+$/.test(phrase);
+  const parsedQuery = parseSearchQuery(query);
+  const exactActionQuery = parsedQuery.terms.length === 1 && /^ap\d+-\d+$/.test(parsedQuery.terms[0]);
+  const exactCaseQuery = parsedQuery.terms.length === 1 && /^[2-4]\.\d+$/.test(parsedQuery.terms[0]);
   const filtered = state.index.cases
     .filter(passesFilter)
     .filter((caseItem) => {
+      if (!matchesExactPhrases(caseItem.searchable, parsedQuery)) return false;
       if (exactActionQuery) {
-        return caseItem.action_points.some((ap) => normalize(ap.action_id) === phrase);
+        return caseItem.action_points.some((ap) => normalize(ap.action_id) === parsedQuery.terms[0]);
       }
-      if (exactCaseQuery) return normalize(caseItem.case_number) === phrase;
+      if (exactCaseQuery) return normalize(caseItem.case_number) === parsedQuery.terms[0];
       return true;
     })
-    .map((caseItem) => ({ caseItem, score: scoreCase(caseItem, query) }))
+    .map((caseItem) => ({
+      caseItem,
+      score: parsedQuery.exactPhrases.length
+        ? Math.max(scoreCase(caseItem, parsedQuery), 1)
+        : scoreCase(caseItem, parsedQuery),
+    }))
     .filter((item) => !query || item.score > 0);
   if (!query) {
     return filtered
@@ -1167,9 +1211,16 @@ function rankedCases() {
 
 function rankedTasks() {
   const query = state.query.trim();
+  const parsedQuery = parseSearchQuery(query);
   const filtered = state.index.task_data.tasks
     .filter(passesTaskFilter)
-    .map((task) => ({ task, score: scoreTask(task, query) }))
+    .filter((task) => matchesExactPhrases(task.search_norm, parsedQuery))
+    .map((task) => ({
+      task,
+      score: parsedQuery.exactPhrases.length
+        ? Math.max(scoreTask(task, parsedQuery), 1)
+        : scoreTask(task, parsedQuery),
+    }))
     .filter((item) => !query || item.score > 0);
 
   return filtered.sort((a, b) => {
@@ -1187,7 +1238,10 @@ function rankedTasks() {
 
 function highlight(text, query) {
   const original = String(text || "");
-  const terms = tokenize(query).filter((term) => term.length > 1);
+  const parsedQuery = parseSearchQuery(query);
+  const terms = [...parsedQuery.exactPhrases, ...parsedQuery.terms.filter((term) => term.length > 1)].sort(
+    (a, b) => b.length - a.length,
+  );
   if (!terms.length) return escapeHtml(original);
   const pattern = new RegExp(
     `(${terms.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
@@ -1220,7 +1274,8 @@ function excerpt(caseItem, query) {
     .filter(Boolean)
     .join(" ");
   const normText = normalize(text);
-  const term = tokenize(query).find((token) => normText.includes(token));
+  const parsedQuery = parseSearchQuery(query);
+  const term = [...parsedQuery.exactPhrases, ...parsedQuery.terms].find((token) => normText.includes(token));
   if (!term) return text.slice(0, 260);
   const start = excerptStart(text, Math.max(0, normText.indexOf(term) - 80));
   const end = excerptEnd(text, Math.min(text.length, start + 300));
