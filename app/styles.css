@@ -336,14 +336,88 @@ h2 {
 .owner-filter {
   display: grid;
   gap: 4px;
-  width: min(260px, 100%);
+  width: min(520px, 100%);
   margin-top: 12px;
+  padding: 0;
+  border: 0;
   color: var(--muted);
   font-size: 0.82rem;
   font-weight: 650;
 }
 
-.owner-filter select,
+.owner-filter legend {
+  padding: 0;
+}
+
+.owner-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+  gap: 6px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfc;
+  padding: 8px;
+}
+
+.owner-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 650;
+  padding: 6px 8px;
+}
+
+.owner-option:hover {
+  border-color: #c5cdd3;
+  background: #f2f5f6;
+}
+
+.owner-option input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--brand);
+}
+
+.owner-option span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.owner-option small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 720;
+}
+
+.owner-option-all {
+  grid-column: 1 / -1;
+  align-items: flex-start;
+  border-color: #d6e4e2;
+  background: #edf6f4;
+  color: var(--brand-dark);
+}
+
+.owner-option-all span {
+  display: grid;
+  gap: 1px;
+}
+
+.owner-option-all small {
+  margin-left: 0;
+  color: var(--brand-dark);
+  font-size: 0.78rem;
+  font-weight: 620;
+}
+
 .task-fields input,
 .task-fields textarea {
   width: 100%;
@@ -353,12 +427,6 @@ h2 {
   color: var(--text);
 }
 
-.owner-filter select {
-  min-height: 36px;
-  padding: 0 10px;
-}
-
-.owner-filter select:focus,
 .task-fields input:focus,
 .task-fields textarea:focus {
   border-color: var(--focus);

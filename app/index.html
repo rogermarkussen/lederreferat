@@ -67,12 +67,10 @@
             <button type="button" class="task-filter" data-task-filter="done">Utførte</button>
             <button type="button" class="task-filter" data-task-filter="all">Alle</button>
           </div>
-          <label class="owner-filter" for="task-owner-filter">
-            Ansvarlig
-            <select id="task-owner-filter">
-              <option value="">Alle</option>
-            </select>
-          </label>
+          <fieldset class="owner-filter">
+            <legend>Ansvarlig</legend>
+            <div id="task-owner-filter" class="owner-options" aria-label="Filtrer på ansvarlig"></div>
+          </fieldset>
         </div>
       </section>
 

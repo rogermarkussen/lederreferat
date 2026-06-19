@@ -41,7 +41,7 @@ const state = {
   view: "search",
   filter: "all",
   taskFilter: "open",
-  taskOwner: "",
+  taskOwners: new Set(),
   query: "",
   dateFrom: "",
   dateTo: "",
@@ -977,22 +977,60 @@ function taskStatusLabel(task) {
   return task.status === "done" ? "Utført" : "Åpen";
 }
 
+function ownerFilterKey(owner) {
+  return normalize(owner || "Uten ansvarlig");
+}
+
+function ownerDisplayName(owner) {
+  return normalizeSpace(owner) || "Uten ansvarlig";
+}
+
+function ownerFilterOptions(tasks) {
+  const byKey = new Map();
+  for (const task of tasks) {
+    const displayName = ownerDisplayName(task.owner);
+    const key = ownerFilterKey(displayName);
+    if (!byKey.has(key)) {
+      byKey.set(key, {
+        key,
+        label: displayName,
+        count: 0,
+      });
+    }
+    byKey.get(key).count += 1;
+  }
+  return [...byKey.values()].sort((a, b) => collator.compare(a.label, b.label));
+}
+
 function renderOwnerFilter() {
   if (!els.taskOwnerFilter || !state.index) return;
-  const owners = [...new Set(state.index.task_data.tasks.map((task) => task.owner || "Uten ansvarlig"))].sort(
-    collator.compare,
-  );
-  const current = state.taskOwner;
+  const owners = ownerFilterOptions(state.index.task_data.tasks);
+  const validKeys = new Set(owners.map((owner) => owner.key));
+  state.taskOwners = new Set([...state.taskOwners].filter((key) => validKeys.has(key)));
+  const allSelected = state.taskOwners.size === 0;
   els.taskOwnerFilter.innerHTML = [
-    `<option value="">Alle</option>`,
-    ...owners.map((owner) => `<option value="${escapeHtml(owner)}">${escapeHtml(owner)}</option>`),
+    `<label class="owner-option owner-option-all">
+      <input type="checkbox" data-owner-all ${allSelected ? "checked" : ""} />
+      <span>
+        <strong>Alle ansvarlige</strong>
+        <small>Viser oppgaver uansett ansvarlig</small>
+      </span>
+    </label>`,
+    ...owners.map(
+      (owner) => `
+        <label class="owner-option">
+          <input
+            type="checkbox"
+            value="${escapeHtml(owner.key)}"
+            data-owner-key="${escapeHtml(owner.key)}"
+            ${state.taskOwners.has(owner.key) ? "checked" : ""}
+          />
+          <span>${escapeHtml(owner.label)}</span>
+          <small>${owner.count}</small>
+        </label>
+      `,
+    ),
   ].join("");
-  if (owners.includes(current)) {
-    els.taskOwnerFilter.value = current;
-  } else {
-    state.taskOwner = "";
-    els.taskOwnerFilter.value = "";
-  }
 }
 
 function setView(view) {
@@ -1079,7 +1117,7 @@ function passesFilter(caseItem) {
 function passesTaskFilter(task) {
   if (state.taskFilter === "open" && task.status === "done") return false;
   if (state.taskFilter === "done" && task.status !== "done") return false;
-  if (state.taskOwner && (task.owner || "Uten ansvarlig") !== state.taskOwner) return false;
+  if (state.taskOwners.size > 0 && !state.taskOwners.has(ownerFilterKey(task.owner))) return false;
   return true;
 }
 
@@ -1135,7 +1173,7 @@ function rankedTasks() {
     const bDue = b.task.due_date || "9999-12-31";
     const dueCompare = collator.compare(aDue, bDue);
     if (dueCompare !== 0) return dueCompare;
-    const ownerCompare = collator.compare(a.task.owner || "", b.task.owner || "");
+    const ownerCompare = collator.compare(ownerFilterKey(a.task.owner), ownerFilterKey(b.task.owner));
     if (ownerCompare !== 0) return ownerCompare;
     return collator.compare(b.task.source?.meeting_date || "", a.task.source?.meeting_date || "");
   });
@@ -1314,12 +1352,14 @@ function renderTasks() {
   }
 
   let currentOwner = null;
+  const ownerLabels = new Map(ownerFilterOptions(allTasks).map((owner) => [owner.key, owner.label]));
   const html = [];
   for (const item of tasks) {
-    const owner = item.task.owner || "Uten ansvarlig";
-    if (owner !== currentOwner) {
-      currentOwner = owner;
-      html.push(`<li class="owner-heading">${escapeHtml(owner)}</li>`);
+    const ownerKey = ownerFilterKey(item.task.owner);
+    if (ownerKey !== currentOwner) {
+      currentOwner = ownerKey;
+      const ownerLabel = ownerLabels.get(ownerKey) || ownerDisplayName(item.task.owner);
+      html.push(`<li class="owner-heading">${escapeHtml(ownerLabel)}</li>`);
     }
     html.push(renderTask(item));
   }
@@ -1537,7 +1577,22 @@ for (const filter of els.taskFilters) {
 }
 
 els.taskOwnerFilter.addEventListener("change", (event) => {
-  state.taskOwner = event.target.value;
+  const allToggle = event.target.closest("[data-owner-all]");
+  if (allToggle) {
+    state.taskOwners.clear();
+    renderOwnerFilter();
+    renderAfterUserChange();
+    return;
+  }
+
+  const ownerToggle = event.target.closest("[data-owner-key]");
+  if (!ownerToggle) return;
+  if (ownerToggle.checked) {
+    state.taskOwners.add(ownerToggle.dataset.ownerKey);
+  } else {
+    state.taskOwners.delete(ownerToggle.dataset.ownerKey);
+  }
+  renderOwnerFilter();
   renderAfterUserChange();
 });
 
